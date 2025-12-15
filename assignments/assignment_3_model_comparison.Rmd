@@ -59,7 +59,18 @@ In your discussion of the findings, briefly interpret the results of the above a
 Read the dataset used in this assignment. Pay attention to the extension of the datafile.
 
 ```{r}
+# packages
+library(tidyverse)
+library(psych)
+library(car)           
+library(broom)
+library(effectsize)
+library(readxl)
 
+df <- read_excel("data/assignment_3_dataset.xlsx")
+
+head(df)
+names(df)
 ```
 
 ## Data and model diagnostics 
@@ -69,7 +80,30 @@ Read the dataset used in this assignment. Pay attention to the extension of the 
 Run an exploratory data analysis (EDA) to investigate the dataset.
 
 ```{r}
+df %>%
+  summarise(across(everything(), ~sum(is.na(.)))) %>%
+  pivot_longer(everything(), names_to="var", values_to="n_missing") %>%
+  arrange(desc(n_missing))
 
+df %>%
+  summarise(
+    pain_min = min(pain, na.rm=TRUE),
+    pain_max = max(pain, na.rm=TRUE),
+    age_min = min(age, na.rm=TRUE),
+    age_max = max(age, na.rm=TRUE),
+    stai_min = min(STAI_trait, na.rm=TRUE),
+    stai_max = max(STAI_trait, na.rm=TRUE),
+    cat_min = min(pain_cat, na.rm=TRUE),
+    cat_max = max(pain_cat, na.rm=TRUE),
+    mind_min = min(mindfulness, na.rm=TRUE),
+    mind_max = max(mindfulness, na.rm=TRUE),
+    serum_min = min(cortisol_serum, na.rm=TRUE),
+    serum_max = max(cortisol_serum, na.rm=TRUE),
+    saliva_min = min(cortisol_saliva, na.rm=TRUE),
+    saliva_max = max(cortisol_saliva, na.rm=TRUE)
+  )
+
+df %>% count(sex)
 ```
 
 #### Correct coding errors
@@ -77,7 +111,24 @@ Run an exploratory data analysis (EDA) to investigate the dataset.
 If you find values in the dataset during the EDA, that are not correct based on the provided descriptions of the variables of the dataset please correct them here.
 
 ```{r}
+df_clean <- df %>%
+  mutate(
+    sex = case_when(
+      sex == "woman"  ~ "female",
+      sex == "female" ~ "female",
+      sex == "male"   ~ "male"))
 
+df_clean %>% count(sex)
+
+df_clean <- df_clean %>% 
+  mutate(sex = factor(sex)) %>%
+  select(
+    pain, sex, age,
+    STAI_trait, pain_cat, mindfulness,
+    cortisol_serum, cortisol_saliva
+  )
+
+head(df_clean)
 ```
 
 ### Model diagnostics
@@ -86,7 +137,13 @@ If you find values in the dataset during the EDA, that are not correct based on 
 In order to test the more complex model for outliers and to test the assumptions first build the model.
 
 ```{r}
+model_complex <- lm(
+  pain ~ age + sex + STAI_trait + pain_cat + mindfulness +
+    cortisol_serum + cortisol_saliva,
+  data = df_clean
+)
 
+summary(model_complex)
 ```
 
 #### Checking for influential outliers
@@ -94,7 +151,22 @@ In order to test the more complex model for outliers and to test the assumptions
 Check for outlier values in the model.
 
 ```{r}
+cooks_d <- cooks.distance(model_complex)
 
+cutoff <- 4 / nrow(df_clean)
+which(cooks_d > cutoff)
+
+df_clean[142, ]
+
+df_clean <- df_clean %>%
+  mutate(pain = ifelse(pain > 10 | pain < 0, NA, pain))
+
+model_complex <- lm(
+  pain ~ age + sex + STAI_trait + pain_cat + mindfulness +
+    cortisol_serum + cortisol_saliva,
+  data = df_clean
+)
+summary(model_complex)
 ```
 
 #### Checking assumptions
@@ -102,19 +174,26 @@ Check for outlier values in the model.
 Check the normality assumption.
 
 ```{r}
+resid_complex <- residuals(model_complex)
 
+qqnorm(resid_complex)
+qqline(resid_complex, col = "red")
+
+hist(resid_complex, breaks = 30, main = "Residuals", xlab = "Residuals")
 ```
 
 Check the linearity assumption.
 
 ```{r}
-
+plot(model_complex, which = 1)
 ```
 
 Check the homoscedasticty assumption (homogeneity of variance).
 
 ```{r}
+plot(model_complex, which = 3)
 
+lmtest::bptest(model_complex)
 ```
 
 Check the multicollinearity assumption.
@@ -126,7 +205,7 @@ https://statisticalhorizons.com/multicollinearity
 http://blog.minitab.com/blog/understanding-statistics/handling-multicollinearity-in-regression-analysis
 
 ```{r}
-
+vif(model_complex)
 ```
 
 ### Making decision based on model diagnostics
@@ -134,13 +213,21 @@ http://blog.minitab.com/blog/understanding-statistics/handling-multicollinearity
 If based on the assumption tests you decide to drop a predictor variable you should do that here. Create your updated model.
 
 ```{r}
+model_complex_2 <- lm(
+  pain ~ age + sex + STAI_trait + pain_cat + mindfulness + cortisol_serum,
+  data = df_clean
+)
 
+summary(model_complex_2)
 ```
 
 #### Checking outliers of the updated model
 
 ```{r}
+cooks_d <- cooks.distance(model_complex_2)
 
+cutoff <- 4 / nrow(df_clean)
+which(cooks_d > cutoff)
 ```
 
 #### Checking assumptions of the updated model
@@ -148,25 +235,32 @@ If based on the assumption tests you decide to drop a predictor variable you sho
 Normality assumption
 
 ```{r}
+resid_complex <- residuals(model_complex_2)
 
+qqnorm(resid_complex)
+qqline(resid_complex, col = "red")
+
+hist(resid_complex, breaks = 30, main = "Residuals", xlab = "Residuals")
 ```
 
 Linearity assumption
 
 ```{r}
-
+plot(model_complex_2, which = 1)
 ```
 
 Homoscedasticty assumption (homogeneity of variance)
 
 ```{r}
+plot(model_complex_2, which = 3)
 
+lmtest::bptest(model_complex)
 ```
 
 Multicollinearity assumption
 
 ```{r}
-
+vif(model_complex_2)
 ```
 
 ## Model comparison
@@ -174,18 +268,34 @@ Multicollinearity assumption
 Create the simple model and get the results of the model that needs to be reported based on the What to report section.
 
 ```{r}
+model_simple <- lm(pain ~ age + sex, data = df_clean)
 
+summary(model_simple)
+glance(model_simple)
+
+tidy(model_simple, conf.int = TRUE)
+standardize_parameters(model_simple)
 ```
 
 Create the more complex model based on the results of the model diagnostics. Also, get the results that needs to be reported based on the What to report section.
 
 ```{r}
+model_complex_final <- lm(
+  pain ~ age + sex + STAI_trait + pain_cat + mindfulness + cortisol_serum,
+  data = df_clean
+)
 
+summary(model_complex_final)
+glance(model_complex_final)
+
+tidy(model_complex_final, conf.int = TRUE)
+standardize_parameters(model_complex_final)
 ```
 
 Compare the two models.
 
 ```{r}
-
+anova(model_simple, model_complex_final)
+AIC(model_simple, model_complex_final)
 ```
 
