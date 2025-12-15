@@ -20,6 +20,7 @@ You will have to create 3 plots based on the datasets and instructions detailed 
 knitr::opts_chunk$set(echo = FALSE)
 library(tidyverse)
 library(tidytuesdayR)
+library(forcats)
 ```
 
 ## Task 1: Climbing expeditions
@@ -31,7 +32,34 @@ The 2020-09-22 TidyTueday datasets are about climbing expeditions. From the thre
 -   The bar colors use the viridis palette and light theme.
 
 ```{r}
+tt <- tt_load("2020-09-22")
+expeditions <- tt$expeditions
 
+plot_df <- expeditions %>%
+  mutate(
+    peak_name = fct_lump(peak_name, n = 15)
+  ) %>%
+  filter(peak_name != "Other") %>%
+  count(peak_name, season, name = "n") %>%
+  group_by(peak_name) %>%
+  mutate(total = sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    peak_name = fct_reorder(peak_name, total)
+  )
+
+ggplot(plot_df, aes(x = peak_name, y = n, fill = season)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_viridis_d() +
+  labs(
+    title = "The 15 most popular peaks stacked by season of expedition",
+    x = NULL,
+    y = "Number of expeditions",
+    fill = "season"
+  ) +
+  theme_light() +
+  theme(legend.position = "bottom")
 ```
 
 ## Task 2: PhDs awarded
@@ -45,7 +73,27 @@ Notes:
 -   The line size is 1.2, the colors are from the brewer "Dark2" palette. The theme is set to minimal.
 
 ```{r}
+library(scales)
 
+tt2 <- tt_load("2019-02-19")
+phd_by_field <- tt2$phd_by_field
+
+plot_df <- phd_by_field %>%
+  group_by(year, broad_field) %>%
+  summarise(n = sum(n_phds, na.rm = TRUE), .groups = "drop")
+
+ggplot(plot_df, aes(x = year, y = n, color = broad_field))+
+  geom_line(linewidth = 1.2) +
+  scale_color_brewer(palette = "Dark2") +
+  scale_x_continuous(breaks = pretty_breaks()) +
+  scale_y_continuous(labels = comma_format()) +
+  labs(
+    title = "Number of awarded Ph.D.-s in the US by year",
+    x = NULL,
+    y = NULL,
+    color = "Broad field") +
+  theme_minimal() +
+  theme(legend.position = "right")
 ```
 
 ## Task 3: Commute in the US
@@ -59,5 +107,27 @@ Notes:
 -   The point size is 2, . The theme is set to light.
 
 ```{r}
+tt3 <- tt_load("2019-11-05")
+commute <- tt3$commute
+head(commute)
+
+plot_df <- commute %>%
+  group_by(state, state_abb, state_region, mode) %>%
+  summarise(n = sum(n, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = mode, values_from = n, values_fill = 0) %>%
+  filter(Walk != 0, Bike != 0)
+
+ggplot(plot_df, aes(x = Walk, y = Bike, color = state_region)) +
+  geom_point(size = 2) +
+  geom_text(aes(label = state_abb), color = "black", show.legend = FALSE) +
+  scale_x_log10(labels = comma_format()) +
+  scale_y_log10(labels = comma_format()) +
+  labs(
+    title = "Title number of people walking vs. biking to work in each USA state",
+    x = "Number of ppl walking to work (log N)",
+    y = "Number of ppl biking to work (log N)",
+    color = "State region"
+  ) +
+  theme_light()
 
 ```
